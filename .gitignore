@@ -1,0 +1,19 @@
+# 编译产物
+x64/
+Debug/
+Release/
+build/
+*.obj
+*.pdb
+*.ilk
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
+
+# 临时/图片测试素材（大文件不入库）
+test_images/*.jpg
+test_images/*.png
+*.log

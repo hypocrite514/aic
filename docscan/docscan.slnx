@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="docscan/docscan.vcxproj" Id="e70b95f7-7303-4c98-a939-7b46a836857b" />
+</Solution>

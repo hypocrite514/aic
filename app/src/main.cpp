@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
@@ -117,10 +118,38 @@ cv::Mat ocrPrepared(const cv::Mat& img) {
 
 }  // namespace
 
+class TeeBuf : public std::streambuf {
+public:
+    TeeBuf(std::streambuf* a, std::streambuf* b) : a_(a), b_(b) {}
+
+protected:
+    int overflow(int c) override {
+        if (c == EOF) return !EOF;
+        a_->sputc(static_cast<char>(c));
+        b_->sputc(static_cast<char>(c));
+        return c;
+    }
+
+    int sync() override {
+        a_->pubsync();
+        b_->pubsync();
+        return 0;
+    }
+
+private:
+    std::streambuf* a_;
+    std::streambuf* b_;
+};
+
 int main() {
     std::string exeDir = exeDirectory();
     std::string webDir = exeDir + "/web";
     std::string configPath = exeDir + "/config.json";
+
+    std::ofstream logFile(exeDir + "/boardnote.log", std::ios::app);
+    TeeBuf tee(std::cout.rdbuf(), logFile.rdbuf());
+    std::cout.rdbuf(&tee);
+    std::cerr.rdbuf(&tee);
 
     AppConfig g_config;
     if (!loadConfig(configPath, g_config)) {
@@ -275,6 +304,7 @@ int main() {
         doc["imageUrl"] = id.empty() ? "" : "/result/" + id;
         doc["mode"] = modeName(fixed.mode);
         doc["blur"] = fixed.blurScore;
+        doc["blurAfter"] = fixed.blurAfter;
         auto tFix = std::chrono::steady_clock::now();
 
         std::string quadId = storeJpeg(fixed.quadDebug, 88);

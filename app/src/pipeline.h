@@ -12,6 +12,7 @@ struct FixResult {
     FixMode mode = FixMode::None;
     double angleDeg = 0.0;
     double blurScore = 0.0;
+    double blurAfter = 0.0;
     std::vector<cv::Point2f> corners;
     cv::Mat quadDebug;
     cv::Mat correctedRaw;

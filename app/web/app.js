@@ -274,7 +274,12 @@ function addCard(item, objectUrl, file) {
         const chips = [];
         if (data.mode) chips.push(MODE_LABEL[data.mode] || data.mode);
         if (data.blur !== undefined) {
-          chips.push("清晰度 " + data.blur.toFixed(0));
+          if (data.blurAfter !== undefined) {
+            chips.push("清晰度 " + data.blur.toFixed(0) + " → " +
+              data.blurAfter.toFixed(0));
+          } else {
+            chips.push("清晰度 " + data.blur.toFixed(0));
+          }
           if (data.blur < 60) {
             html += "<p class='warn'>检测到照片较模糊，识别准确率会下降，建议重拍或靠近拍摄。</p>";
           }

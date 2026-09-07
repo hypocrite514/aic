@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <opencv2/photo.hpp>
+
 namespace {
 
 const double kMinCorrectableAngle = 0.4;
@@ -85,7 +87,9 @@ double detectSkewAngle(const cv::Mat& src) {
         double w = box.size.width;
         double h = box.size.height;
         double longSide = std::max(w, h);
+        double shortSide = std::min(w, h);
         if (longSide < 40.0) continue;
+        if (shortSide < 2.0 || longSide / std::max(shortSide, 1.0) > 40.0) continue;
         double angle = box.angle;
         if (w < h) angle += 90.0;
         else if (angle < -45.0) angle += 90.0;
@@ -93,6 +97,101 @@ double detectSkewAngle(const cv::Mat& src) {
         lineAngles.push_back(angle);
     }
     return medianOf(lineAngles);
+}
+
+double quadTiltAngle(const std::vector<cv::Point2f>& corners) {
+    if (corners.size() != 4) return 0.0;
+    double dx = corners[1].x - corners[0].x;
+    double dy = corners[1].y - corners[0].y;
+    if (std::abs(dx) < 1.0) return 0.0;
+    double angle = std::atan2(dy, dx) * 180.0 / CV_PI;
+    if (angle > 45.0) angle -= 90.0;
+    if (angle < -45.0) angle += 90.0;
+    return -angle;
+}
+
+double detectBoardAngle(const cv::Mat& bgr) {
+    cv::Mat hsv;
+    cv::cvtColor(bgr, hsv, cv::COLOR_BGR2HSV);
+
+    cv::Mat green, dark, mask;
+    cv::inRange(hsv, cv::Scalar(35, 40, 40), cv::Scalar(85, 255, 255), green);
+    cv::inRange(hsv, cv::Scalar(0, 0, 0), cv::Scalar(180, 110, 90), dark);
+    mask = green | dark;
+
+    cv::Mat labels, stats, cents;
+    int n = cv::connectedComponentsWithStats(mask, labels, stats, cents);
+
+    double frameArea = static_cast<double>(bgr.cols) * bgr.rows;
+    double bestAngle = 0.0;
+    double bestScore = -1.0;
+    for (int i = 1; i < n; ++i) {
+        int area = stats.at<int>(i, cv::CC_STAT_AREA);
+        if (area < frameArea * 0.03 || area > frameArea * 0.45) continue;
+
+        cv::Mat comp = (labels == i);
+        std::vector<std::vector<cv::Point>> cs;
+        cv::findContours(comp, cs, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        if (cs.empty()) continue;
+        cv::RotatedRect r = cv::minAreaRect(*std::max_element(
+            cs.begin(), cs.end(),
+            [](const std::vector<cv::Point>& a, const std::vector<cv::Point>& b) {
+                return cv::contourArea(a) < cv::contourArea(b);
+            }));
+        double aspect = std::max(r.size.width, r.size.height) /
+                        std::max(std::min(r.size.width, r.size.height), 1.0f);
+        if (aspect < 0.9f || aspect > 4.0f) continue;
+
+        double a = r.angle;
+        if (r.size.width < r.size.height) a += 90.0;
+        while (a > 45.0) a -= 90.0;
+        while (a < -45.0) a += 90.0;
+
+        double score = area;
+        if (std::fabs(a) >= 2.0) score *= 10.0;
+        if (score > bestScore) {
+            bestScore = score;
+            bestAngle = a;
+        }
+    }
+    return bestAngle;
+}
+
+double detectHoughAngle(const cv::Mat& gray) {
+    cv::Mat edges;
+    cv::Canny(gray, edges, 30, 90);
+
+    std::vector<cv::Vec4i> lines;
+    cv::HoughLinesP(edges, lines, 1, CV_PI / 180.0, 50, 120.0, 25.0);
+
+    if (lines.size() < 4) return 0.0;
+
+    const int bins = 90;
+    std::vector<double> hist(bins, 0.0);
+    double totalWeight = 0.0;
+    for (const auto& l : lines) {
+        double dx = l[2] - l[0];
+        double dy = l[3] - l[1];
+        double len = std::sqrt(dx * dx + dy * dy);
+        if (len < 80.0) continue;
+        double a = std::atan2(dy, dx) * 180.0 / CV_PI;
+        while (a > 45.0) a -= 90.0;
+        while (a < -45.0) a += 90.0;
+        int bin = static_cast<int>(std::round(a)) + 45;
+        bin = std::max(0, std::min(bins - 1, bin));
+        hist[bin] += len;
+        totalWeight += len;
+    }
+    if (totalWeight < 300.0) return 0.0;
+
+    int peak = 0;
+    for (int i = 1; i < bins; ++i) {
+        if (hist[i] > hist[peak]) peak = i;
+    }
+    double angle = peak - 45.0;
+    if (std::abs(angle) < 1.0) return 0.0;
+    if (hist[peak] < totalWeight * 0.18) return 0.0;
+    return -angle;
 }
 
 bool detectQuad(const cv::Mat& src, std::vector<cv::Point2f>& corners,
@@ -120,7 +219,7 @@ bool detectQuad(const cv::Mat& src, std::vector<cv::Point2f>& corners,
     cv::findContours(edges, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     double frameArea = static_cast<double>(work.cols) * work.rows;
-    const double minArea = frameArea * 0.10;
+    const double minArea = frameArea * 0.03;
 
     std::vector<size_t> order(contours.size());
     for (size_t i = 0; i < contours.size(); ++i) order[i] = i;
@@ -131,7 +230,8 @@ bool detectQuad(const cv::Mat& src, std::vector<cv::Point2f>& corners,
     std::vector<cv::Point> bestApprox;
     bool bestTouches = false;
     for (const size_t idx : order) {
-        if (cv::contourArea(contours[idx]) < minArea) break;
+        double area = cv::contourArea(contours[idx]);
+        if (area < minArea) break;
         std::vector<cv::Point> hull;
         cv::convexHull(contours[idx], hull);
         double perim = cv::arcLength(hull, true);
@@ -139,6 +239,19 @@ bool detectQuad(const cv::Mat& src, std::vector<cv::Point2f>& corners,
             std::vector<cv::Point> approx;
             cv::approxPolyDP(hull, approx, epsScale * perim, true);
             if (approx.size() != 4) continue;
+            std::vector<cv::Point2f> cand;
+            for (const auto& p : approx) cand.emplace_back(p.x, p.y);
+            sortQuadCorners(cand);
+            float sideA = static_cast<float>(cv::norm(cand[1] - cand[0]));
+            float sideB = static_cast<float>(cv::norm(cand[2] - cand[1]));
+            float sideC = static_cast<float>(cv::norm(cand[3] - cand[2]));
+            float sideD = static_cast<float>(cv::norm(cand[0] - cand[3]));
+            float minSide = std::min({sideA, sideB, sideC, sideD});
+            float width = std::max(sideA, sideC);
+            float height = std::max(sideB, sideD);
+            if (minSide < 40.0f) continue;
+            float aspect = width / std::max(height, 1.0f);
+            if (aspect < 0.15f || aspect > 6.5f) continue;
             bool touch = false;
             for (const auto& p : approx) {
                 if (p.x <= kBorderTolerance || p.y <= kBorderTolerance ||
@@ -211,6 +324,10 @@ cv::Mat enhanceBoard(const cv::Mat& src, double blurScore) {
     cv::merge(ch, lab);
     cv::cvtColor(lab, out, cv::COLOR_Lab2BGR);
 
+    if (blurScore < 250.0) {
+        cv::detailEnhance(out, out, 10.0f, 0.15f);
+    }
+
     double sharpA, sharpB;
     if (blurScore < 80.0) {
         sharpA = 1.3;
@@ -241,7 +358,7 @@ FixResult processPhoto(const cv::Mat& src) {
     bool touchesBorder = false;
     bool quadOk = detectQuad(base, corners, touchesBorder);
 
-    if (quadOk && !touchesBorder) {
+    if (quadOk) {
         cv::polylines(res.quadDebug,
                       std::vector<std::vector<cv::Point>>{std::vector<cv::Point>{
                           cv::Point(cvRound(corners[0].x), cvRound(corners[0].y)),
@@ -253,6 +370,9 @@ FixResult processPhoto(const cv::Mat& src) {
             cv::circle(res.quadDebug, cv::Point(cvRound(c.x), cvRound(c.y)), 14,
                        cv::Scalar(0, 255, 0), -1);
         }
+    }
+
+    if (quadOk && !touchesBorder) {
         float widthA = static_cast<float>(cv::norm(corners[1] - corners[0]));
         float widthB = static_cast<float>(cv::norm(corners[2] - corners[3]));
         float maxWidth = std::max(widthA, widthB);
@@ -278,15 +398,35 @@ FixResult processPhoto(const cv::Mat& src) {
         } else {
             gray = base.clone();
         }
+
         double totalAngle = 0.0;
-        for (int pass = 0; pass < 2; ++pass) {
-            double angle = detectSkewAngle(gray);
-            if (std::fabs(angle) < kMinCorrectableAngle) break;
+        double angle = quadOk ? quadTiltAngle(corners) : 0.0;
+
+        bool boardFixed = false;
+        if (std::fabs(angle) < kMinCorrectableAngle) {
+            angle = -detectBoardAngle(base);
+            if (std::fabs(angle) >= kMinCorrectableAngle) boardFixed = true;
+        }
+        if (std::fabs(angle) < kMinCorrectableAngle) {
+            angle = detectHoughAngle(gray);
+        }
+        if (std::fabs(angle) >= kMinCorrectableAngle) {
             base = rotateFullCanvas(base, angle, false);
             totalAngle += angle;
             res.angleDeg = totalAngle;
             res.mode = FixMode::Deskew;
             cv::cvtColor(base, gray, cv::COLOR_BGR2GRAY);
+        }
+        if (!boardFixed) {
+            for (int pass = 0; pass < 2; ++pass) {
+                double textAngle = detectSkewAngle(gray);
+                if (std::fabs(textAngle) < kMinCorrectableAngle) break;
+                base = rotateFullCanvas(base, textAngle, false);
+                totalAngle += textAngle;
+                res.angleDeg = totalAngle;
+                res.mode = FixMode::Deskew;
+                cv::cvtColor(base, gray, cv::COLOR_BGR2GRAY);
+            }
         }
     }
 
@@ -297,6 +437,10 @@ FixResult processPhoto(const cv::Mat& src) {
     res.blurScore = measureBlur(grayOut);
 
     res.out = enhanceBoard(base, res.blurScore);
+
+    cv::Mat grayAfter;
+    cv::cvtColor(res.out, grayAfter, cv::COLOR_BGR2GRAY);
+    res.blurAfter = measureBlur(grayAfter);
     return res;
 }
 

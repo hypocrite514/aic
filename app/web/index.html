@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>智影课堂 - AI黑板笔记助手</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1.4">
 </head>
 <body>
   <header class="hero">
@@ -45,10 +45,6 @@
     <section id="toolbar" class="toolbar hidden">
       <button id="batchNoteBtn" class="btn batch-btn">一键生成全部笔记</button>
       <span id="batchInfo" class="batch-info"></span>
-      <label class="fast-switch">
-        <input type="checkbox" id="fastMode">
-        快速模式（速度优先，识别精度略降）
-      </label>
     </section>
 
     <section id="gallery" class="gallery"></section>
@@ -57,9 +53,10 @@
   <footer>
     <span>第8届 AIC 算法创新赛道 · AI+软件创新</span>
     <span>本地运行 · 数据不出本机（OCR/LLM 为在线智能服务）</span>
+    <span class="ver">版本 v1.4</span>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=1.4"></script>
 </body>
 </html>

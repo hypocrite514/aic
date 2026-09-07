@@ -103,9 +103,9 @@ std::vector<unsigned char> toJpegBytes(const cv::Mat& img, int quality) {
     return jpg;
 }
 
-cv::Mat ocrPrepared(const cv::Mat& img, bool fast) {
+cv::Mat ocrPrepared(const cv::Mat& img) {
     cv::Mat out = img;
-    int targetSide = fast ? 1920 : 2560;
+    const int targetSide = 2240;
     int longSide = std::max(out.cols, out.rows);
     if (longSide > targetSide) {
         double s = targetSide * 1.0 / longSide;
@@ -269,7 +269,6 @@ int main() {
         }
 
         auto t0 = std::chrono::steady_clock::now();
-        bool fastMode = req.has_param("fast") && req.get_param_value("fast") == "1";
 
         FixResult fixed = processPhoto(img);
         std::string id = storeJpeg(fixed.out, 92);
@@ -296,14 +295,12 @@ int main() {
 
         std::cout << "[step1] 收到图片 " << img.cols << "x" << img.rows
                   << " 矫正模式=" << modeName(fixed.mode)
-                  << (fastMode ? " 快速模式" : "")
                   << " 耗时=" << std::chrono::duration_cast<std::chrono::milliseconds>(
                                      tFix - t0)
                                      .count()
                   << "ms" << std::endl;
 
-        std::vector<unsigned char> ocrJpg = toJpegBytes(ocrPrepared(fixed.out, fastMode),
-                                                        fastMode ? 85 : 90);
+        std::vector<unsigned char> ocrJpg = toJpegBytes(ocrPrepared(fixed.out), 88);
 
         if (!g_config.baiduReady()) {
             doc["ocr"]["status"] = "no_key";
@@ -316,11 +313,9 @@ int main() {
                 doc["ocr"]["detail"] = "token: " + err;
                 std::cout << "[step2] OCR token 失败: " << err << std::endl;
             } else {
-                std::cout << "[step2] 获取百度 token 成功，调用"
-                          << (fastMode ? "通用识别(快速)" : "手写识别") << "…"
-                          << std::endl;
-                OcrResult r = baiduOcr(g_config, ocrJpg, token, !fastMode);
-                if (!r.ok && !fastMode) {
+                std::cout << "[step2] 获取百度 token 成功，调用手写识别…" << std::endl;
+                OcrResult r = baiduOcr(g_config, ocrJpg, token, true);
+                if (!r.ok) {
                     std::cout << "[step3] 手写识别未出结果(" << r.detail
                               << ")，降级通用识别…" << std::endl;
                     r = baiduOcr(g_config, ocrJpg, token, false);
@@ -340,8 +335,7 @@ int main() {
                 }
                 if (r.ok && g_config.llmReady()) {
                     std::cout << "[step4] 调用大模型整理笔记…" << std::endl;
-                    LlmResult note = organizeNotes(g_config, r.text,
-                                                   fastMode ? 600 : 1200);
+                    LlmResult note = organizeNotes(g_config, r.text, 1000);
                     auto tLlm = std::chrono::steady_clock::now();
                     doc["note"]["status"] = note.ok ? "ok" : "error";
                     if (note.ok) {

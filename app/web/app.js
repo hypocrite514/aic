@@ -128,7 +128,9 @@ function addCard(item, objectUrl, file) {
 
   card.innerHTML =
     '<div class="card-head"><span>' + escapeHtml(item.name || "") +
-    '</span><span class="tag' + tagCls + '">' + modeText + angleText + '</span></div>' +
+    '</span><span class="head-right">' +
+    '<span class="tag' + tagCls + '">' + modeText + angleText + '</span>' +
+    '<button class="del-btn" title="删除这张照片">×</button></span></div>' +
     '<div class="preview">' +
     '<div class="preview-side result-side">' +
     '<figcaption>矫正增强</figcaption>' +
@@ -258,8 +260,7 @@ function addCard(item, objectUrl, file) {
 
     const form = new FormData();
     form.append("image", file, file.name);
-    const fastQ = (fastModeBox && fastModeBox.checked) ? "?fast=1" : "";
-    return fetch("/api/note" + fastQ, { method: "POST", body: form, signal: ctrl.signal })
+    return fetch("/api/note", { method: "POST", body: form, signal: ctrl.signal })
       .then((res) => res.json().catch(() => null))
       .then((data) => {
         if (!data) {
@@ -317,7 +318,6 @@ function addCard(item, objectUrl, file) {
             const b = document.getElementById("pdf-" + item.id);
             if (b) b.addEventListener("click", printPdf);
           }, 0);
-          return true;
         } else if (data.note && data.note.status === "no_key") {
           html += "<p class='err'>LLM 未配置密钥，仅完成识别</p>";
         } else if (data.note) {
@@ -325,7 +325,7 @@ function addCard(item, objectUrl, file) {
             escapeHtml(data.note.detail || "未知错误") + "</p>";
         }
         noteText.innerHTML = html || "<p>无内容</p>";
-        return false;
+        return !!(data.note && data.note.status === "ok");
       })
       .catch((err) => {
         if (err && err.name === "AbortError") {
@@ -344,7 +344,17 @@ function addCard(item, objectUrl, file) {
   }
 
   noteBtn.addEventListener("click", () => { genNote(); });
-  gCards.push({ name: item.name, genNote });
+  const cardCtx = { name: item.name, genNote };
+  cardCtx.remove = () => {
+    const idx = gCards.indexOf(cardCtx);
+    if (idx >= 0) gCards.splice(idx, 1);
+    card.remove();
+    if (gCards.length === 0) toolbar.classList.add("hidden");
+    showStatus("已删除：" + item.name, "info");
+  };
+  const delBtn = card.querySelector(".del-btn");
+  delBtn.addEventListener("click", () => { cardCtx.remove(); });
+  gCards.push(cardCtx);
 
   gallery.prepend(card);
   toolbar.classList.remove("hidden");
@@ -353,7 +363,6 @@ function addCard(item, objectUrl, file) {
 const toolbar = document.getElementById("toolbar");
 const batchNoteBtn = document.getElementById("batchNoteBtn");
 const batchInfo = document.getElementById("batchInfo");
-const fastModeBox = document.getElementById("fastMode");
 const gCards = [];
 
 batchNoteBtn.addEventListener("click", async () => {

@@ -209,6 +209,32 @@ main {
   word-break: break-all;
 }
 
+.card .card-head .head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.del-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: #eef2f8;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.del-btn:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .tag {
   flex-shrink: 0;
   margin-left: 8px;
@@ -523,6 +549,11 @@ footer {
   flex-wrap: wrap;
 }
 
+.ver {
+  color: #64748b;
+  font-weight: 600;
+}
+
 .hidden {
   display: none !important;
 }
@@ -560,23 +591,6 @@ footer {
 .batch-info {
   font-size: 12.5px;
   color: var(--muted);
-}
-
-.fast-switch {
-  margin-left: auto;
-  font-size: 12.5px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.fast-switch input {
-  accent-color: var(--primary);
-  width: 15px;
-  height: 15px;
 }
 
 .gallery {

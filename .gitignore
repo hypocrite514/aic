@@ -26,3 +26,6 @@ config.json
 
 test_images/
 *.err
+
+*.json.bak
+note_result*

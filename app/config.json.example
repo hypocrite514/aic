@@ -1,0 +1,7 @@
+{
+  "baidu_api_key": "",
+  "baidu_secret_key": "",
+  "deepseek_api_key": "",
+  "llm_model": "deepseek-chat",
+  "llm_base_url": "https://api.deepseek.com"
+}

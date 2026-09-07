@@ -17,3 +17,12 @@ build/
 test_images/*.jpg
 test_images/*.png
 *.log
+
+# app 构建产物
+app/build/
+app/*.exe
+config.json
+
+
+test_images/
+*.err
